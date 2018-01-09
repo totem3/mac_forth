@@ -45,7 +45,7 @@ static void end_def(void) {
 
 void init() {
     unsigned int code_bytes = 640 * 1024;
-    uint8_t *mem = mmap(
+    mem = (uint8_t*) mmap(
             NULL,
             code_bytes,
             PROT_READ | PROT_WRITE | PROT_EXEC,
@@ -55,5 +55,4 @@ void init() {
     mrd2 = word_definitions;
     uint8_t i = 1;
     ep = &i;
-    printf("i\n");
 }
