@@ -3,6 +3,7 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 static uint8_t *mem;
 static uint8_t *sp;
@@ -88,6 +89,82 @@ static void parse_name(void) {
     getc(fin);
 }
 
+static void perform_compilation_semantics(uint8_t *word) {
+  if (WORD_IMMEDIATE(word)) {
+    execute(word);
+  } else {
+    B(0xe8),D(WORD_BODY(word) - (ep + 4));
+  }
+}
+
+static void perform_interpretation_semantics(uint8_t *word) {
+  execute(word);
+}
+
+static void text_interpreter(void) {
+    while (1) {
+        parse_name();
+
+        if (token[0] == '\0') return;
+
+        uint8_t *word = find_word(token);
+        if (word) {
+            if (state) {
+                perform_compilation_semantics(word);
+            } else {
+                perform_interpretation_semantics(word);
+            }
+            continue;
+        }
+
+        char *p;
+        long long i = strtoll(token, &p, 0);
+        if (!*p) {
+            if (state) {
+                B(0x48),B(0x83),B(0xeb),B(0x08); // SUB RBX, 8
+                B(0x48),B(0xb8),Q(i);            // MOV RAX, i
+                B(0x48),B(0x89),B(0x03);         // MOV [RBX], RAX
+            } else {
+                sp -= 8;
+                *(int64_t *)sp = i;
+            }
+            continue;
+        }
+
+        printf("undefined word: %s\n", token);
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void colon(void) {
+    parse_name();
+    begin_def(token, 0);
+    state = 1;
+}
+
+static void semicolon(void) {
+    B(0xc3);
+    end_def();
+    state = 0;
+}
+
+static void paren(void) {
+    while (1) {
+        int c = getc(fin);
+        if (c == EOF || c == ')') return;
+    }
+}
+
+static void X(void) {
+  parse_name();
+  B(strtol(token, 0, 0));
+}
+
+static void print_rdi_as_int(uint64_t n) {
+  printf("%" PRId64, n);
+  fflush(stdout);
+}
+
 void init() {
     unsigned int code_bytes = 640 * 1024;
     mem = (uint8_t*) mmap(
@@ -111,4 +188,9 @@ void init() {
         "c3 "       // RET
         ;
     write_hex(c_to_ft, c_to_ft_limit, c_to_ft_image);
+    def_cfun(":", colon, 0);
+    def_cfun(";", semicolon, 1);
+    def_cfun("(", paren, 1);
+    def_cfun("X", X, 1);
+    def_cfun("print-rdi-as-int", print_rdi_as_int, 0);
 }
