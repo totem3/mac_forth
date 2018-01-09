@@ -54,6 +54,19 @@ static void end_def(void) {
   ep = 0;
 }
 
+static void def_cfun(const char *name, void *cfun, int immediate) {
+  begin_def(name, immediate);
+  B(0x48),B(0x89),B(0xe5);         // MOV RBP, RSP
+  B(0x48),B(0x83),B(0xec),B(0x20); // SUB RSP, 32
+  B(0x48),B(0x83),B(0xe4),B(0xf0); // AND RSP, ~0xf0
+  B(0x48),B(0xb8),Q(cfun);         // MOV RAX, cfun
+  B(0xff),B(0xd0);                 // CALL RAX
+  B(0x48),B(0x89),B(0xec);         // MOV RSP, RBP
+  B(0xc3);                         // RET
+  end_def();
+}
+
+
 void init() {
     unsigned int code_bytes = 640 * 1024;
     mem = (uint8_t*) mmap(
