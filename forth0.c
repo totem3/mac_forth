@@ -31,6 +31,17 @@ static uint8_t *mem;
 #define D(d) (*(uint32_t *)ep=(uint32_t)(d),ep+=4)
 #define Q(q) (*(uint64_t *)ep=(uint64_t)(q),ep+=8)
 
+#define WORD_PREV(word) ((uint8_t *)(word)-WORD_SIZE(word))
+
+static uint8_t *find_word(const char *name) {
+  uint8_t *word = mrd2; // 最新のdefinition(most recent definition) へのポインタ
+  while (WORD_SIZE(word)) {
+    if (!strcmp(WORD_NAME(word), name)) return word;
+    word = WORD_PREV(word);
+  }
+  return 0;
+}
+
 static void begin_def(const char *name, int immediate) {
     ep = mrd2;
     strncpy((char *)ep, name, 32); ep+=32;
