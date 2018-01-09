@@ -82,6 +82,12 @@ static void write_hex(uint8_t *outp, uint8_t *limit, const char *data) {
   }
 }
 
+static void parse_name(void) {
+    token[0] = '\0';
+    fscanf(fin, "%31s%*[^ \t\n\r]", token);
+    getc(fin);
+}
+
 void init() {
     unsigned int code_bytes = 640 * 1024;
     mem = (uint8_t*) mmap(
