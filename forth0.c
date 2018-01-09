@@ -2,8 +2,10 @@
 #include <stdint.h>
 #include <sys/mman.h>
 #include <string.h>
+#include <stdlib.h>
 
 static uint8_t *mem;
+static uint8_t *sp;
 
 #define import           (mem+0x200)
 #define import_limit     (mem+0x300)
@@ -66,6 +68,19 @@ static void def_cfun(const char *name, void *cfun, int immediate) {
   end_def();
 }
 
+static void execute(uint8_t *word) {
+  sp = ((uint8_t *(*)(uint8_t *,uint8_t *))c_to_ft)(WORD_BODY(word),sp);
+}
+
+static void write_hex(uint8_t *outp, uint8_t *limit, const char *data) {
+  for (int i = 0; data[i]; i += 3, ++outp) {
+    if (limit <= outp) {
+      printf("error: too many data: write_hex\n");
+      exit(EXIT_FAILURE);
+    }
+    *outp = strtol(&data[i], 0, 16);
+  }
+}
 
 void init() {
     unsigned int code_bytes = 640 * 1024;
@@ -76,7 +91,18 @@ void init() {
             MAP_ANONYMOUS | MAP_PRIVATE,
             0,
             0);
+    sp = mem + code_bytes;
     mrd2 = word_definitions;
-    uint8_t i = 1;
-    ep = &i;
+
+    static const char *c_to_ft_image =
+        "53 "       // PUSH RBX
+        "55 "       // PUSH RBP
+        "48 89 d3 " // MOV RBX, RDX
+        "ff d7 "    // CALL RDI
+        "48 89 d8 " // MOV RAX, RBX
+        "5d "       // POP RBP
+        "5b "       // POP RBX
+        "c3 "       // RET
+        ;
+    write_hex(c_to_ft, c_to_ft_limit, c_to_ft_image);
 }
