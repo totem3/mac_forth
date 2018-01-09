@@ -1,15 +1,25 @@
 #include "./forth0.c"
 
+static void hello(void) {
+  printf("hello\n");
+}
+
 int main () {
   init();
 
-  begin_def("nop1", 0); B(0xc3 /* RET */); end_def();
-  begin_def("nop2", 0); B(0xc3 /* RET */); end_def();
-  printf("%s\n", WORD_NAME(find_word("nop1"))); // nop1 が表示される
-  printf("%s\n", WORD_NAME(find_word("nop2"))); // nop2 が表示される
-  ((void(*)())WORD_BODY(find_word("nop1")))(); // クラッシュしない
-  ((void(*)())WORD_BODY(find_word("nop2")))(); // クラッシュしない
-  printf("%p\n",find_word("nop3")); // ヌルポインタ的な何かが表示される(表示内容は処理系定義)
-  printf("OK!\n");
+  begin_def("hello", 0);
+  B(0x55);                         // PUSH RBP
+  B(0x48),B(0x89),B(0xe5);         // MOV RBP, RSP
+  B(0x48),B(0x83),B(0xec),B(0x20); // SUB RSP, 32
+  B(0x48),B(0x83),B(0xe4),B(0xf0); // AND RSP, ~0xf
+  B(0x48),B(0xb8),Q(hello);        // MOV RAX, hello
+  B(0xff),B(0xd0);                 // CALL RAX
+  B(0x48),B(0x89),B(0xec);         // MOV RSP, RBP
+  B(0x5d);                         // POP RBP
+  B(0xc3);                         // RET
+  end_def();
+
+  ((void(*)())WORD_BODY(find_word("hello")))();
+
   return 0;
 }
