@@ -1,4 +1,4 @@
 : main
-  10 >rdi print-rdi-as-int
+  10 >rdi 20 >rsi 30 >rdx 40 >rcx print-args-as-int
 ;
 main

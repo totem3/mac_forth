@@ -165,6 +165,11 @@ static void print_rdi_as_int(uint64_t n) {
   fflush(stdout);
 }
 
+static void print_args_as_int(uint64_t a, uint64_t b, uint64_t c, uint64_t d) {
+  printf("%llu %llu %llu %llu", a, b, c, d);
+  fflush(stdout);
+}
+
 void init() {
     unsigned int code_bytes = 640 * 1024;
     mem = (uint8_t*) mmap(
@@ -193,4 +198,5 @@ void init() {
     def_cfun("(", paren, 1);
     def_cfun("X", X, 1);
     def_cfun("print-rdi-as-int", print_rdi_as_int, 0);
+    def_cfun("print-args-as-int", print_args_as_int, 0);
 }
