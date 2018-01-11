@@ -1,6 +1,6 @@
 .PHONY: test
 test:
-	gcc -o test test.c && cat *.ft |./test
+	gcc -o test test.c && ls tests/* | xargs -I {} ./test_ft {}
 
 debug:
-	gcc -o test test.c -g3 && lldb ./test
+	gcc -o test test.c -O0 -g3 -m32 && lldb ./test

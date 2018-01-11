@@ -121,10 +121,12 @@ static void text_interpreter(void) {
         long long i = strtoll(token, &p, 0);
         if (!*p) {
             if (state) {
+                // compilation
                 B(0x48),B(0x83),B(0xeb),B(0x08); // SUB RBX, 8
                 B(0x48),B(0xb8),Q(i);            // MOV RAX, i
                 B(0x48),B(0x89),B(0x03);         // MOV [RBX], RAX
             } else {
+                // interpretation
                 sp -= 8;
                 *(int64_t *)sp = i;
             }
@@ -170,6 +172,29 @@ static void print_args_as_int(uint64_t a, uint64_t b, uint64_t c, uint64_t d) {
   fflush(stdout);
 }
 
+static void print_rdi_as_cstr(const char *s) {
+  printf("%s", s);
+  fflush(stdout);
+}
+
+static void s_quote(void) {
+  B(0x48),B(0x83),B(0xeb),B(0x08); // SUB RBX, 8
+  B(0x48),B(0x8d),B(0x05),D(8);    // LEA RAX, [RIP+8]
+  B(0x48),B(0x89),B(0x03);         // MOV [RBX], RAX
+  B(0xe9),D(0);                    // JMP REL32
+  uint8_t *rel32 = ep;
+
+  while (1) {
+    int c = getc(fin);
+    if (c == EOF || c == '"') break;
+    if (c == '\\') c = getc(fin);
+    B(c);
+  }
+  B(0);
+
+  *(uint32_t *)(rel32 - 4) = ep - rel32;
+}
+
 void init() {
     unsigned int code_bytes = 640 * 1024;
     mem = (uint8_t*) mmap(
@@ -185,7 +210,7 @@ void init() {
     static const char *c_to_ft_image =
         "53 "       // PUSH RBX
         "55 "       // PUSH RBP
-        "48 89 d3 " // MOV RBX, RDX
+        "48 89 f3 " // MOV RBX, RSI
         "ff d7 "    // CALL RDI
         "48 89 d8 " // MOV RAX, RBX
         "5d "       // POP RBP
@@ -198,5 +223,7 @@ void init() {
     def_cfun("(", paren, 1);
     def_cfun("X", X, 1);
     def_cfun("print-rdi-as-int", print_rdi_as_int, 0);
-    def_cfun("print-args-as-int", print_args_as_int, 0);
+    def_cfun("print-args-as-int", print_args_as_int, 1);
+    def_cfun("print-rdi-as-cstr", print_rdi_as_cstr, 0);
+    def_cfun("s\"", s_quote, 1);
 }
