@@ -226,4 +226,9 @@ void init() {
     def_cfun("print-args-as-int", print_args_as_int, 1);
     def_cfun("print-rdi-as-cstr", print_rdi_as_cstr, 0);
     def_cfun("s\"", s_quote, 1);
+    begin_def("base+", 0);
+    B(0x48),B(0x8d),B(0x05),D(mem - (ep + 4)); // LEA RAX, [RIP - mem]
+    B(0x48),B(0x01),B(0x03);                   // ADD [RBX], RAX
+    B(0xc3);
+    end_def();
 }
