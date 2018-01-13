@@ -1,6 +1,6 @@
 : main
-  42 0x380 base+ ! ( mem+0x380 番地に 42 を書き込む )
-  0x380 base+ @ ( mem+0x380 番地から 42 を読む )
+  42 0x380 base+ !
+  0x380 base+ @
   >rdi print-rdi-as-int
 ;
 main

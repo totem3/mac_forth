@@ -31,7 +31,11 @@ fn main() {
     let mut r = BufReader::new(file);
     let mut expected = vec![];
     let _ = r.read_until(b'(', &mut vec![]);
-    let _ = r.read_until(b')', &mut expected);
+    let size = r.read_until(b')', &mut expected);
+    if size.unwrap() == 0 {
+        println!("expected result is not given");
+        exit(1);
+    }
     let expected = ::std::str::from_utf8(&expected[0..expected.len()-1]).expect("outupt is not valid utf8").trim();
 
     print!("{} ", path);

@@ -4,6 +4,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <sys/stat.h>
+#include "darwin-xnu/EXTERNAL_HEADERS/mach-o/loader.h"
+#include "darwin-xnu/osfmk/mach/machine.h"
 
 static uint8_t *mem;
 static uint8_t *sp;
@@ -231,4 +234,71 @@ void init() {
     B(0x48),B(0x01),B(0x03);                   // ADD [RBX], RAX
     B(0xc3);
     end_def();
+}
+
+typedef struct mach_header_64 mach_header_t;
+typedef struct segment_command_64 segment_command_t;
+typedef struct entry_point_command entry_point_command_t;
+
+#define origin 0x100000000
+static void save(const char *filename) {
+    uint8_t offset = 0;
+    printf("mem %p\n", mem);
+    mach_header_t *header = (mach_header_t*)mem + offset;
+    header->magic = MH_MAGIC_64;
+    header->cputype = (CPU_ARCH_ABI64 | CPU_TYPE_X86);
+    header->cpusubtype = CPU_SUBTYPE_LIB64 | CPU_SUBTYPE_X86_64_ALL;
+    header->filetype = MH_EXECUTE;
+    header->ncmds = 2;
+    header->sizeofcmds = sizeof(segment_command_t);
+    header->flags = MH_PIE | MH_TWOLEVEL | MH_PRELOAD;
+
+    offset += sizeof(mach_header_t);
+    segment_command_t *seg1 = (segment_command_t*)(mem + offset);
+    seg1->cmd = LC_SEGMENT_64;
+    seg1->cmdsize = sizeof(segment_command_t);
+    strcpy(seg1->segname, SEG_PAGEZERO);
+    seg1->vmaddr = 0;
+    seg1->vmsize = origin;
+    seg1->fileoff = 0;
+    seg1->filesize = 0;
+    seg1->maxprot = (vm_prot_t)0x0;
+    seg1->initprot = (vm_prot_t)0x0;
+    seg1->nsects = 0;
+    seg1->flags = 0;
+
+    offset += (sizeof(segment_command_t));
+    segment_command_t *seg2 = (segment_command_t*)(mem + offset);
+    seg2->cmd = LC_SEGMENT_64;
+    seg2->cmdsize = sizeof(segment_command_t);
+    strcpy(seg2->segname, SEG_TEXT);
+    seg2->vmaddr = 0x0000000100000000;
+    seg2->vmsize = 0x0000000000002000;
+    seg2->fileoff = 0;
+    seg2->filesize = 8192;
+    seg2->maxprot = (vm_prot_t)0x7;
+    seg2->initprot = (vm_prot_t)0x5;
+    seg2->nsects = 0;
+    seg2->flags = 0;
+
+    offset += (sizeof(segment_command_t));
+    entry_point_command_t *entry = (entry_point_command_t*)(mem + offset);
+    entry->cmd = LC_MAIN;
+    entry->cmdsize = 24;
+    entry->entryoff = 0;
+    entry->stacksize = 0;
+
+    FILE *fp = fopen(filename, "wb");
+    fwrite(mem, 1, 0x200, fp);
+    fwrite(mem, 1, sizeof(mach_header_t) + sizeof(segment_command_t) + 0x1000 + 0xa0000 + 0xa0000 + 1024, fp);
+    fclose(fp);
+    chmod(filename, 0777);
+}
+
+int main(int argc, char **argv) {
+  init();
+  fin = stdin;
+  text_interpreter();
+  if (1 < argc) save(argv[1]);
+  return 0;
 }
