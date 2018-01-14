@@ -1,0 +1,5 @@
+: . >rdi print-rdi-as-int ;
+: w 10 exit 20 ;
+w .
+
+( 10 )

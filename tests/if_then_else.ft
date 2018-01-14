@@ -1,0 +1,5 @@
+: . >rdi print-rdi-as-int ;
+: x if 11 . else 22 . then 33 . ;
+1 x 0 x
+
+( 11332233 )

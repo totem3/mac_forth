@@ -1,0 +1,13 @@
+: . >rdi print-rdi-as-int ;
+: w
+  10
+  begin
+  dup while
+    1 -
+    dup .
+  repeat
+  drop
+;
+w
+
+( 9876543210 )

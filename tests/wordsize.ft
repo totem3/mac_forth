@@ -1,0 +1,5 @@
+: . >rdi print-rdi-as-int ;
+: hoge ;
+mrd2 @ word-size .
+
+( 49 )

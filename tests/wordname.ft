@@ -1,0 +1,5 @@
+: %s >rdi print-rdi-as-cstr ;
+: hoge ;
+mrd2 @ word-name %s
+
+( hoge )
