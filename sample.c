@@ -1,158 +1,284 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <sys/mman.h>
-#include <string.h>
-#include <stdlib.h>
-#include <inttypes.h>
 #include <sys/stat.h>
-#include "EXTERNAL_HEADERS/mach-o/loader.h"
 #include "osfmk/mach/machine.h"
+#include "EXTERNAL_HEADERS/mach-o/loader.h"
+#include <string.h>
+#include <assert.h>
 
-static uint8_t *mem;
+void print_sect(const struct section_64* scp) {
+    printf("section %s in %s\n", scp->sectname, scp->segname);
+    printf("->addr %llx\n", scp->addr);
+    printf("->size %llx\n", scp->size);
+    printf("->offset %x\n", scp->offset);
+    printf("->align %x\n", scp->align);
+    printf("->flags %x\n", scp->flags);
+}
 
-void init() {
-    unsigned int code_bytes = 640 * 1024;
-    mem = (uint8_t*) mmap(
+int main()
+{
+    unsigned int code_bytes = 5 * 1024;
+    uint8_t* mem = (uint8_t*) mmap(
             NULL,
             code_bytes,
             PROT_READ | PROT_WRITE | PROT_EXEC,
             MAP_ANONYMOUS | MAP_PRIVATE,
             0,
             0);
-}
-
-typedef struct mach_header_64 mach_header_t;
-typedef struct segment_command_64 segment_command_t;
-typedef struct entry_point_command entry_point_command_t;
-typedef struct dylinker_command dylinker_command_t;
-typedef struct section_64 section_t;
-
-
-#define origin 0x100000000
-#define PLACEHOLDER (uint64_t)0
-static void save(const char *filename) {
     uint64_t offset = 0;
-    uint64_t vmaddr = 0x0000000100000000;
-    uint64_t vmsize = 4096;
+    uint64_t data_offset = 0;
     uint64_t ncmds = 0;
-    /* uint64_t vmsize = 0x0000000000000400; */
-    uint64_t filesize = 1024;
+    uint64_t vmaddr = 0x0000000100000000;
+    uint64_t vmsize = 0x0000000000001000;
 
-    mach_header_t *header = (mach_header_t*)mem + offset;
+    struct mach_header_64 *header = (struct mach_header_64*)mem;
     header->magic = MH_MAGIC_64;
     header->cputype = (CPU_ARCH_ABI64 | CPU_TYPE_X86);
     header->cpusubtype = CPU_SUBTYPE_LIB64 | CPU_SUBTYPE_X86_64_ALL;
+    header->ncmds = 0;
+    header->sizeofcmds = 0;
     header->filetype = MH_EXECUTE;
     header->flags = MH_PIE | MH_TWOLEVEL | MH_PRELOAD;
 
-    offset += sizeof(mach_header_t);
-    ncmds++;
-    printf("1 offset %llu\n", offset);
-    segment_command_t *seg1 = (segment_command_t*)(mem + offset);
-    seg1->cmd = LC_SEGMENT_64;
-    seg1->cmdsize = sizeof(segment_command_t);
-    strcpy(seg1->segname, SEG_PAGEZERO);
+    offset += sizeof(struct mach_header_64);
 
-    offset += (sizeof(segment_command_t));
-    ncmds++;
-    printf("2 offset %llu\n", offset);
+    printf("sizeof segment %lu\n", sizeof(struct segment_command_64));
+    printf("sizeof section %lu\n", sizeof(struct section_64));
+    printf("offset %llu\n", offset);
+    struct segment_command_64 *zero = (struct segment_command_64*)(mem + offset);
+    zero->cmd = LC_SEGMENT_64;
+    zero->cmdsize = sizeof(struct segment_command_64);
+    zero->vmsize = vmaddr;
+    strcpy(zero->segname, SEG_PAGEZERO);
+    offset += sizeof(struct segment_command_64);
+    ncmds += 1;
 
-    // {{{ TEXT SEGMENT
-    segment_command_t *text_seg = (segment_command_t*)(mem + offset);
-    text_seg->cmd = LC_SEGMENT_64;
-    text_seg->cmdsize = sizeof(segment_command_t) + sizeof(section_t);
-    strcpy(text_seg->segname, SEG_TEXT);
-    text_seg->vmaddr = vmaddr;
-    text_seg->vmsize = vmsize; // 0x0000000000002000;
-    text_seg->fileoff = 0;//start_of_data; // sizeof(mach_header_t) + sizeof(segment_command_t) * 2 + sizeof(entry_point_command_t);
-    text_seg->filesize = 0; // filesize;//0x10;
-    text_seg->maxprot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
-    text_seg->initprot = VM_PROT_READ | VM_PROT_EXECUTE;
-    text_seg->nsects = 1;
-    text_seg->flags = 0;
-    /// TEXT SEGMENT }}}
+    printf("offset %llu\n", offset);
+    struct segment_command_64 *text = (struct segment_command_64*)(mem + offset);
+    text->cmd = LC_SEGMENT_64;
+    text->cmdsize = sizeof(struct segment_command_64);
+    strncpy(text->segname, SEG_TEXT, 16);
+    text->vmaddr = vmaddr;
+    text->vmsize = vmsize;
+    text->fileoff = 0;
+    text->filesize = 4096;
+    text->maxprot = 0x7;
+    text->initprot = 0x5;
+    uint32_t nsects = 0;
+    text->nsects = nsects;
+    text->flags = 0;
 
+    offset += sizeof(struct segment_command_64);
+    ncmds += 1;
 
-    offset += (sizeof(segment_command_t));
-    printf("3 offset %llu\n", offset);
+    // section 0
+    printf("offset %llu\n", offset);
+    struct section_64 *text_sect = (struct section_64*)(mem + offset);
+    strncpy(text_sect->sectname, SECT_TEXT, 16);
+    strncpy(text_sect->segname, SEG_TEXT, 16);
+    text_sect->addr = 0; //vmaddr + offset
+    text_sect->size = 8;
+    text_sect->offset = 0;
+    text_sect->align = 0;
+    text_sect->flags = 0x80000400;
 
-    /// {{{ TEXT SECTION
-    section_t *text_section = (section_t*)(mem + offset);
-    strcpy(text_section->sectname, SECT_TEXT);
-    strcpy(text_section->segname, SEG_TEXT);
-    text_section->align = 4;
-    text_section->nreloc = 0;
-    text_section->flags = S_ATTR_PURE_INSTRUCTIONS |  S_ATTR_SOME_INSTRUCTIONS;
-    // TEXT SECTION }}}
+    offset += sizeof(struct section_64);
+    data_offset += 8;
+    nsects += 1;
 
-    offset += (sizeof(section_t));
-    ncmds++;
-    printf("4 offset %llu\n", offset);
+    // section 1
+    printf("offset %llu\n", offset);
+    struct section_64 *unwind_sect = (struct section_64*)(mem + offset);
+    strncpy(unwind_sect->sectname, "__unwind_info", 16);
+    strncpy(unwind_sect->segname, SEG_TEXT, 16);
+    unwind_sect->addr = 0; //vmaddr + offset
+    unwind_sect->size = 0x48;
+    unwind_sect->offset = 0;
+    unwind_sect->align = 2;
+    unwind_sect->flags = 0x80000400;
 
-    /// {{{ ENTRY POINT
-    entry_point_command_t *entry = (entry_point_command_t*)(mem + offset);
-    entry->cmd = LC_MAIN;
-    entry->cmdsize = 24;
-    entry->entryoff = 0;
-    entry->stacksize = 0;
-    //  ENTRY POINT}}}
+    nsects += 1;
+    offset += sizeof(struct section_64);
 
-    offset += sizeof(entry_point_command_t);
-    ncmds++;
+    data_offset += 0x48;
+    text->nsects = nsects;
+    text->cmdsize += (sizeof(struct section_64) * nsects);
+    printf("text->nsects %d\n", text->nsects);
+    printf("sizeof segment %lu\n", sizeof(struct segment_command_64));
+    printf("sizeof section %lu\n", sizeof(struct section_64));
+    printf("text->cmdsize %d\n", text->cmdsize);
 
-    /// {{{ DYLINKER COMMAND
-    dylinker_command_t *dylinker = (dylinker_command_t*)(mem + offset);
+    printf("linkedit offset %llu\n", offset);
+    struct segment_command_64 *linkedit = (struct segment_command_64*)(mem+offset);
+    linkedit->cmd = LC_SEGMENT_64;
+    linkedit->cmdsize = sizeof(struct segment_command_64);
+    strncpy(linkedit->segname, SEG_LINKEDIT, 16);
+    linkedit->vmaddr = 0; // vmdadr + offset
+    linkedit->vmsize = 4096;
+    linkedit->fileoff = 4096;
+    linkedit->filesize = 152;
+    linkedit->maxprot = 7;
+    linkedit->initprot = 1;
+
+    offset += sizeof(struct segment_command_64);
+    data_offset += 152;
+    ncmds += 1;
+
+    struct dyld_info_command *dyld_info_only = (struct dyld_info_command*)(mem+offset);
+    dyld_info_only->cmd = LC_DYLD_INFO_ONLY;
+    dyld_info_only->cmdsize = sizeof(struct dyld_info_command);
+    dyld_info_only->export_off = 4096;
+    dyld_info_only->export_size = 48;
+
+    offset += sizeof(struct segment_command_64);
+    data_offset += 152;
+    ncmds += 1;
+
+    struct symtab_command *symtab = (struct symtab_command*)(mem + offset);
+    symtab->cmd = LC_SYMTAB;
+    symtab->cmdsize = sizeof(struct symtab_command);
+    symtab->symoff = 4152; // 0x1038
+    symtab->nsyms = 3;
+    symtab->stroff = 4200; // 0x1068
+    symtab->strsize = 48;
+
+    offset += sizeof(struct symtab_command);
+    ncmds += 1;
+
+    struct dysymtab_command *dysymtab = (struct dysymtab_command*)(mem + offset);
+    dysymtab->cmd = LC_DYSYMTAB;
+    dysymtab->cmdsize = sizeof(struct dysymtab_command);
+    dysymtab->nextdefsym = 2;
+    dysymtab->iundefsym = 2;
+    dysymtab->nundefsym = 1;
+
+    offset += sizeof(struct dysymtab_command);
+    ncmds += 1;
+
+    struct dylinker_command* dylinker = (struct dylinker_command*)(mem + offset);
     dylinker->cmd = LC_LOAD_DYLINKER;
-    dylinker->cmdsize = sizeof(dylinker_command_t) + 20 + 8;
-    union lc_str name = { 0x0c };
+    dylinker->cmdsize = sizeof(struct dylinker_command) + 20;
+    union lc_str name = {0x0c};
     dylinker->name = name;
-    offset += sizeof(dylinker_command_t);
-    strncpy((char*)(mem+offset), "/usr/lib/dyld", 20 + 8);
-    // DYLINKER COMMAND }}}
+    offset += sizeof(struct dylinker_command);
+    strncpy((char*)(mem+offset), "/usr/lib/dyld", 20);
 
-    offset += 20 + 8;
+    offset += 20;
+    ncmds += 1;
 
-    // fill header
+    struct uuid_command* uuid = (struct uuid_command*)(mem + offset);
+    uuid->cmd = LC_UUID;
+    uuid->cmdsize = sizeof(struct uuid_command);
+    /* uuid->uuid = 0;*/
+
+    offset += sizeof(struct uuid_command);
+    ncmds += 1;
+
+    struct version_min_command *version = (struct version_min_command*)(mem + offset);
+    version->cmd = LC_VERSION_MIN_MACOSX;
+    version->cmdsize = sizeof(struct version_min_command);
+    version->version = 658432;
+    version->sdk = 658432;
+
+    offset += sizeof(struct version_min_command);
+    ncmds += 1;
+
+    struct source_version_command *source = (struct source_version_command*)(mem + offset);
+    source->cmd = LC_SOURCE_VERSION;
+    source->cmdsize = sizeof(struct source_version_command);
+    source->version = 0;
+
+    offset += sizeof(struct source_version_command);
+    ncmds += 1;
+
+    struct entry_point_command *entry = (struct entry_point_command*)(mem + offset);
+    entry->cmd = LC_MAIN;
+    entry->cmdsize = sizeof(struct entry_point_command);
+    entry->entryoff = 4016;
+    entry->stacksize = 0;
+
+    offset += sizeof(struct entry_point_command);
+    ncmds += 1;
+
+    struct dylib_command *dylib = (struct dylib_command*)(mem + offset);
+    dylib->cmd = LC_LOAD_DYLIB;
+    dylib->cmdsize = 56;// sizeof(struct dylib_command) + 0;
+    union lc_str libname = {24};
+    struct dylib lib = {
+        .name = libname,
+        .timestamp = 2,
+        .current_version = 1684210434,
+        .compatibility_version = 65536
+    };
+    dylib->dylib = lib;
+
+    offset += sizeof(struct dylib_command);
+
+    strncpy((char*)mem+offset, "/usr/lib/libSystem.B.dylib", 32);
+
+    offset += 32;
+    ncmds += 1;
+
+    struct linkedit_data_command *function_start = (struct linkedit_data_command*)(mem+offset);
+    function_start->cmd = LC_FUNCTION_STARTS;
+    function_start->cmdsize = sizeof(struct linkedit_data_command);
+    function_start->dataoff = 4144;
+    function_start->datasize = 8;
+
+    offset += sizeof(struct linkedit_data_command);
+    ncmds += 1;
+
+
+    struct linkedit_data_command *data_in_code = (struct linkedit_data_command*)(mem+offset);
+    data_in_code->cmd = LC_DATA_IN_CODE;
+    data_in_code->cmdsize = sizeof(struct linkedit_data_command);
+    data_in_code->dataoff = 3152;
+    data_in_code->datasize = 0;
+
+    offset += sizeof(struct linkedit_data_command);
+    ncmds += 1;
+
     header->ncmds = ncmds;
-    header->sizeofcmds = offset - sizeof(mach_header_t);
+    printf("offset %llu\n", offset);
+    printf("header %lu\n", sizeof(struct mach_header_64));
+    header->sizeofcmds = offset - sizeof(struct mach_header_64);
+    /* assert(header->sizeofcmds == 728); */
 
-    // fill textsegment
-    printf("offset %llud\n", offset);
-    text_seg->filesize = offset;
+    offset += 0x0cb0;
 
-    // fill text_section
-    text_section->addr = vmaddr + offset;
-    text_section->size = 0x10;
-    text_section->offset = offset;
+    text_sect->addr = vmaddr + offset;
+    text_sect->offset = offset;
 
-    // fill entry
-    entry->entryoff = offset;
+    offset += text_sect->size;
 
-    uint64_t vm_end = text_seg->vmaddr + text_seg->vmsize;
-    uint64_t section_end = text_section->addr + text_section->size;
-    printf("vmaddr + vmsize = %llx\n", text_seg->vmaddr + text_seg->vmsize);
-    printf("addr + size = %llx\n", text_section->addr + text_section->size);
+    unwind_sect->addr = vmaddr + offset;
+    unwind_sect->offset = offset;
 
-    if (section_end > vm_end) {
-        printf("failed\n");
-        return;
-    }
+    offset += unwind_sect->size;
 
+    linkedit->vmaddr = vmaddr + 0x1000; //offset;
+    printf("inkedit vmaddr %llx\n", vmaddr + offset);
+    printf("inkedit vmaddr %llu\n", vmaddr + offset);
 
-    printf("5 offset %llu\n", offset);
-    uint8_t prog[16] = {0x55,0x48,0x89,0xE5,0x31,0xC0,0xC7,0x45,0xFC,0x00,0x00,0x00,0x00,0x5D,0xC3, 0x00};
-    memcpy(mem+offset, prog, 16);
+    printf("----- header -----\n");
+    printf("header->magic %d\n", header->magic);
+    printf("header->cputype %d\n", header->cputype);
+    printf("header->cpusubtype %d\n", header->cpusubtype);
+    printf("header->ncmds %d\n", header->ncmds);
+    printf("header->sizeofcmds %d\n", header->sizeofcmds);
+    printf("header->filetype %d\n", header->filetype);
+    printf("header->flags %d\n", header->flags);
 
+    print_sect(text_sect);
+    print_sect(unwind_sect);
+
+    char* filename = "foo";
     FILE *fp = fopen(filename, "wb");
     /* fwrite(mem, 1, 0x200, fp); */
     printf("start_of_data %llu\n", offset);
     fwrite(mem, 1, 4096, fp);
     fclose(fp);
     chmod(filename, 0777);
-}
-
-int main(int argc, char **argv) {
-  init();
-  if (1 < argc) save(argv[1]);
-  return 0;
+    return 0;
 }
