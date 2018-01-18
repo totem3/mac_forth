@@ -8,24 +8,41 @@
 #include "darwin-xnu/EXTERNAL_HEADERS/mach-o/loader.h"
 #include "darwin-xnu/osfmk/mach/machine.h"
 
-static uint8_t *mem;
+static unsigned int code_bytes;
+static uint8_t *prg;
 static uint8_t *sp;
 
-#define import           (mem+0x200)
-#define import_limit     (mem+0x300)
-#define startup          (mem+0x300)
-#define startup_limit    (mem+0x320)
-#define c_to_ft          (mem+0x320)
-#define c_to_ft_limit    (mem+0x330)
-#define word_definitions (mem+0x400)
+#define import           (prg+0x240)
+#define import_limit     (prg+0x340)
+#define startup          (prg+0x340)
+#define startup_limit    (prg+0x360)
+#define c_to_ft          (prg+0x360)
+#define c_to_ft_limit    (prg+0x370)
+#define word_definitions (prg+0x440)
 
-#define ftmain (*(uint64_t *)(mem+0x3a8))
-#define state  (*(uint64_t *)(mem+0x3b0))
-#define fin    (*(FILE **)(mem+0x3b8))
-#define token  ((char *)(mem+0x3c0))
-#define mrd1   (*(uint8_t **)(mem+0x3e0))
-#define mrd2   (*(uint8_t **)(mem+0x3e8))
-#define ep     (*(uint8_t **)(mem+0x3f0))
+#define ftmain (*(uint64_t *)(prg+0x3e8))
+#define state  (*(uint64_t *)(prg+0x3f0))
+#define fin    (*(FILE **)(prg+0x3f8))
+#define token  ((char *)(prg+0x400))
+#define mrd1   (*(uint8_t **)(prg+0x420))
+#define mrd2   (*(uint8_t **)(prg+0x428))
+#define ep     (*(uint8_t **)(prg+0x430))
+
+/* #define import           (prg+0x200) */
+/* #define import_limit     (prg+0x300) */
+/* #define startup          (prg+0x300) */
+/* #define startup_limit    (prg+0x320) */
+/* #define c_to_ft          (prg+0x320) */
+/* #define c_to_ft_limit    (prg+0x330) */
+/* #define word_definitions (prg+0x400) */
+
+/* #define ftmain (*(uint64_t *)(prg+0x3a8)) */
+/* #define state  (*(uint64_t *)(prg+0x3b0)) */
+/* #define fin    (*(FILE **)(prg+0x3b8)) */
+/* #define token  ((char *)(prg+0x3c0)) */
+/* #define mrd1   (*(uint8_t **)(prg+0x3e0)) */
+/* #define mrd2   (*(uint8_t **)(prg+0x3e8)) */
+/* #define ep     (*(uint8_t **)(prg+0x3f0)) */
 
 #define WORD_SIZE(word) (((uint64_t *)(word))[-1])
 #define WORD_HEAD(word) ((uint8_t *)(word)-WORD_SIZE(word))
@@ -199,15 +216,15 @@ static void s_quote(void) {
 }
 
 void init() {
-    unsigned int code_bytes = 640 * 1024;
-    mem = (uint8_t*) mmap(
+    code_bytes = 640 * 1024;
+    prg = (uint8_t*) mmap(
             NULL,
             code_bytes,
             PROT_READ | PROT_WRITE | PROT_EXEC,
             MAP_ANONYMOUS | MAP_PRIVATE,
             0,
             0);
-    sp = mem + code_bytes;
+    sp = prg + code_bytes;
     mrd2 = word_definitions;
 
     static const char *c_to_ft_image =
@@ -230,7 +247,7 @@ void init() {
     def_cfun("print-rdi-as-cstr", print_rdi_as_cstr, 0);
     def_cfun("s\"", s_quote, 1);
     begin_def("base+", 0);
-    B(0x48),B(0x8d),B(0x05),D(mem - (ep + 4)); // LEA RAX, [RIP - mem]
+    B(0x48),B(0x8d),B(0x05),D(prg - (ep + 4)); // LEA RAX, [RIP - prg]
     B(0x48),B(0x01),B(0x03);                   // ADD [RBX], RAX
     B(0xc3);
     end_def();
@@ -242,55 +259,171 @@ typedef struct entry_point_command entry_point_command_t;
 
 #define origin 0x100000000
 static void save(const char *filename) {
-    uint8_t offset = 0;
-    printf("mem %p\n", mem);
-    mach_header_t *header = (mach_header_t*)mem + offset;
+    uint64_t offset = 0;
+    uint64_t data_offset = 0;
+    uint64_t ncmds = 0;
+    uint64_t vmaddr = 0x0000000100000000;
+    uint64_t vmsize = 0x0000000000001000;
+
+    struct mach_header_64 *header = (struct mach_header_64*)mem;
     header->magic = MH_MAGIC_64;
     header->cputype = (CPU_ARCH_ABI64 | CPU_TYPE_X86);
     header->cpusubtype = CPU_SUBTYPE_LIB64 | CPU_SUBTYPE_X86_64_ALL;
+    header->ncmds = 0;
+    header->sizeofcmds = 0;
     header->filetype = MH_EXECUTE;
-    header->ncmds = 2;
-    header->sizeofcmds = sizeof(segment_command_t);
     header->flags = MH_PIE | MH_TWOLEVEL | MH_PRELOAD;
 
-    offset += sizeof(mach_header_t);
-    segment_command_t *seg1 = (segment_command_t*)(mem + offset);
-    seg1->cmd = LC_SEGMENT_64;
-    seg1->cmdsize = sizeof(segment_command_t);
-    strcpy(seg1->segname, SEG_PAGEZERO);
-    seg1->vmaddr = 0;
-    seg1->vmsize = origin;
-    seg1->fileoff = 0;
-    seg1->filesize = 0;
-    seg1->maxprot = (vm_prot_t)0x0;
-    seg1->initprot = (vm_prot_t)0x0;
-    seg1->nsects = 0;
-    seg1->flags = 0;
+    offset += sizeof(struct mach_header_64);
 
-    offset += (sizeof(segment_command_t));
-    segment_command_t *seg2 = (segment_command_t*)(mem + offset);
-    seg2->cmd = LC_SEGMENT_64;
-    seg2->cmdsize = sizeof(segment_command_t);
-    strcpy(seg2->segname, SEG_TEXT);
-    seg2->vmaddr = 0x0000000100000000;
-    seg2->vmsize = 0x0000000000002000;
-    seg2->fileoff = 0;
-    seg2->filesize = 8192;
-    seg2->maxprot = (vm_prot_t)0x7;
-    seg2->initprot = (vm_prot_t)0x5;
-    seg2->nsects = 0;
-    seg2->flags = 0;
+    struct segment_command_64 *zero = (struct segment_command_64*)(mem + offset);
+    zero->cmd = LC_SEGMENT_64;
+    zero->cmdsize = sizeof(struct segment_command_64);
+    zero->vmsize = vmaddr;
+    strcpy(zero->segname, SEG_PAGEZERO);
+    offset += sizeof(struct segment_command_64);
+    ncmds += 1;
 
-    offset += (sizeof(segment_command_t));
-    entry_point_command_t *entry = (entry_point_command_t*)(mem + offset);
+    struct segment_command_64 *text = (struct segment_command_64*)(mem + offset);
+    text->cmd = LC_SEGMENT_64;
+    text->cmdsize = sizeof(struct segment_command_64);
+    strncpy(text->segname, SEG_TEXT, 16);
+    text->vmaddr = vmaddr;
+    text->vmsize = vmsize;
+    text->fileoff = 0;
+    text->filesize = 4096;
+    text->maxprot = 0x7;
+    text->initprot = 0x5;
+    uint32_t nsects = 0;
+    text->nsects = nsects;
+    text->flags = 0;
+
+    offset += sizeof(struct segment_command_64);
+    ncmds += 1;
+
+    // section 0
+    /* uint8_t prg[] = {0x48,0xc7,0xc0,0x02,0x00,0x00,0x00,0xc3}; */
+    size_t prgsize = sizeof(prg);
+
+    struct section_64 *text_sect = (struct section_64*)(mem + offset);
+    strncpy(text_sect->sectname, SECT_TEXT, 16);
+    strncpy(text_sect->segname, SEG_TEXT, 16);
+    text_sect->addr = 0; //vmaddr + offset
+    text_sect->size = prgsize;
+    text_sect->offset = 0;
+    text_sect->align = 0;
+    text_sect->flags = 0x80000400;
+
+    offset += sizeof(struct section_64);
+    data_offset += text_sect->size;
+    nsects += 1;
+
+    text->nsects = nsects;
+    text->cmdsize += (sizeof(struct section_64) * nsects);
+
+    struct segment_command_64 *linkedit = (struct segment_command_64*)(mem+offset);
+    linkedit->cmd = LC_SEGMENT_64;
+    linkedit->cmdsize = sizeof(struct segment_command_64);
+    strncpy(linkedit->segname, SEG_LINKEDIT, 16);
+    linkedit->vmaddr = 0; // vmdadr + offset
+    linkedit->vmsize = 4096;
+    linkedit->fileoff = 4096;
+    linkedit->filesize = 152;
+    linkedit->maxprot = 7;
+    linkedit->initprot = 1;
+
+    offset += sizeof(struct segment_command_64);
+    data_offset += 152;
+    ncmds += 1;
+
+    struct dyld_info_command *dyld_info_only = (struct dyld_info_command*)(mem+offset);
+    dyld_info_only->cmd = LC_DYLD_INFO_ONLY;
+    dyld_info_only->cmdsize = sizeof(struct dyld_info_command);
+    dyld_info_only->export_off = 4096;
+    dyld_info_only->export_size = 48;
+
+    offset += sizeof(struct dyld_info_command);
+    ncmds += 1;
+
+    struct symtab_command *symtab = (struct symtab_command*)(mem + offset);
+    symtab->cmd = LC_SYMTAB;
+    symtab->cmdsize = sizeof(struct symtab_command);
+    symtab->symoff = 4152; // 0x1038
+    symtab->nsyms = 3;
+    symtab->stroff = 4200; // 0x1068
+    symtab->strsize = 48;
+
+    offset += sizeof(struct symtab_command);
+    ncmds += 1;
+
+    struct dysymtab_command *dysymtab = (struct dysymtab_command*)(mem + offset);
+    dysymtab->cmd = LC_DYSYMTAB;
+    dysymtab->cmdsize = sizeof(struct dysymtab_command);
+    dysymtab->nextdefsym = 2;
+    dysymtab->iundefsym = 2;
+    dysymtab->nundefsym = 1;
+
+    offset += sizeof(struct dysymtab_command);
+    ncmds += 1;
+
+    struct dylinker_command* dylinker = (struct dylinker_command*)(mem + offset);
+    dylinker->cmd = LC_LOAD_DYLINKER;
+    dylinker->cmdsize = sizeof(struct dylinker_command) + 20;
+    union lc_str name = {0x0c};
+    dylinker->name = name;
+    offset += sizeof(struct dylinker_command);
+    strncpy((char*)(mem+offset), "/usr/lib/dyld", 20);
+
+    offset += 20;
+    ncmds += 1;
+
+    struct entry_point_command *entry = (struct entry_point_command*)(mem + offset);
     entry->cmd = LC_MAIN;
-    entry->cmdsize = 24;
-    entry->entryoff = 0;
+    entry->cmdsize = sizeof(struct entry_point_command);
+    entry->entryoff = 4016;
     entry->stacksize = 0;
 
+    offset += sizeof(struct entry_point_command);
+    ncmds += 1;
+
+    struct dylib_command *dylib = (struct dylib_command*)(mem + offset);
+    dylib->cmd = LC_LOAD_DYLIB;
+    dylib->cmdsize = 56;// sizeof(struct dylib_command) + 0;
+    union lc_str libname = {24};
+    struct dylib lib = {
+        .name = libname,
+        .timestamp = 2,
+        .current_version = 81148930,
+        .compatibility_version = 65536
+    };
+    dylib->dylib = lib;
+
+    offset += sizeof(struct dylib_command);
+
+    strncpy((char*)mem+offset, "/usr/lib/libSystem.B.dylib", 32);
+
+    offset += 32;
+    ncmds += 1;
+
+    header->ncmds = ncmds;
+    header->sizeofcmds = offset - sizeof(struct mach_header_64);
+    /* assert(header->sizeofcmds == 728); */
+
+    if (offset < 0xfb0) {
+        offset += (0xfb0 - offset);
+    }
+
+    text_sect->addr = vmaddr + offset;
+    text_sect->offset = offset;
+
+    memcpy((mem+offset), prg, sizeof(prg));
+    offset += text_sect->size;
+
+    linkedit->vmaddr = vmaddr + 0x1000; //offset;
+
+
     FILE *fp = fopen(filename, "wb");
-    fwrite(mem, 1, 0x200, fp);
-    fwrite(mem, 1, sizeof(mach_header_t) + sizeof(segment_command_t) + 0x1000 + 0xa0000 + 0xa0000 + 1024, fp);
+    fwrite(mem, 1, code_bytes, fp);
     fclose(fp);
     chmod(filename, 0777);
 }
