@@ -7,42 +7,43 @@
 #include <sys/stat.h>
 #include "darwin-xnu/EXTERNAL_HEADERS/mach-o/loader.h"
 #include "darwin-xnu/osfmk/mach/machine.h"
+#include <assert.h>
 
 static unsigned int code_bytes;
-static uint8_t *prg;
+static uint8_t *mem;
 static uint8_t *sp;
 
-#define import           (prg+0x240)
-#define import_limit     (prg+0x340)
-#define startup          (prg+0x340)
-#define startup_limit    (prg+0x360)
-#define c_to_ft          (prg+0x360)
-#define c_to_ft_limit    (prg+0x370)
-#define word_definitions (prg+0x440)
+#define import           (mem+0xfb0+0x240)
+#define import_limit     (mem+0xfb0+0x340)
+#define startup          (mem+0xfb0+0x340)
+#define startup_limit    (mem+0xfb0+0x360)
+#define c_to_ft          (mem+0xfb0+0x360)
+#define c_to_ft_limit    (mem+0xfb0+0x370)
+#define word_definitions (mem+0xfb0+0x440)
 
-#define ftmain (*(uint64_t *)(prg+0x3e8))
-#define state  (*(uint64_t *)(prg+0x3f0))
-#define fin    (*(FILE **)(prg+0x3f8))
-#define token  ((char *)(prg+0x400))
-#define mrd1   (*(uint8_t **)(prg+0x420))
-#define mrd2   (*(uint8_t **)(prg+0x428))
-#define ep     (*(uint8_t **)(prg+0x430))
+#define ftmain (*(uint64_t *)(mem+0xfb0+0x3e8))
+#define state  (*(uint64_t *)(mem+0xfb0+0x3f0))
+#define fin    (*(FILE **)(mem+0xfb0+0x3f8))
+#define token  ((char *)(mem+0xfb0+0x400))
+#define mrd1   (*(uint8_t **)(mem+0xfb0+0x420))
+#define mrd2   (*(uint8_t **)(mem+0xfb0+0x428))
+#define ep     (*(uint8_t **)(mem+0xfb0+0x430))
 
-/* #define import           (prg+0x200) */
-/* #define import_limit     (prg+0x300) */
-/* #define startup          (prg+0x300) */
-/* #define startup_limit    (prg+0x320) */
-/* #define c_to_ft          (prg+0x320) */
-/* #define c_to_ft_limit    (prg+0x330) */
-/* #define word_definitions (prg+0x400) */
+/* #define import           (mem+0x200) */
+/* #define import_limit     (mem+0x300) */
+/* #define startup          (mem+0x300) */
+/* #define startup_limit    (mem+0x320) */
+/* #define c_to_ft          (mem+0x320) */
+/* #define c_to_ft_limit    (mem+0x330) */
+/* #define word_definitions (mem+0x400) */
 
-/* #define ftmain (*(uint64_t *)(prg+0x3a8)) */
-/* #define state  (*(uint64_t *)(prg+0x3b0)) */
-/* #define fin    (*(FILE **)(prg+0x3b8)) */
-/* #define token  ((char *)(prg+0x3c0)) */
-/* #define mrd1   (*(uint8_t **)(prg+0x3e0)) */
-/* #define mrd2   (*(uint8_t **)(prg+0x3e8)) */
-/* #define ep     (*(uint8_t **)(prg+0x3f0)) */
+/* #define ftmain (*(uint64_t *)(mem+0x3a8)) */
+/* #define state  (*(uint64_t *)(mem+0x3b0)) */
+/* #define fin    (*(FILE **)(mem+0x3b8)) */
+/* #define token  ((char *)(mem+0x3c0)) */
+/* #define mrd1   (*(uint8_t **)(mem+0x3e0)) */
+/* #define mrd2   (*(uint8_t **)(mem+0x3e8)) */
+/* #define ep     (*(uint8_t **)(mem+0x3f0)) */
 
 #define WORD_SIZE(word) (((uint64_t *)(word))[-1])
 #define WORD_HEAD(word) ((uint8_t *)(word)-WORD_SIZE(word))
@@ -216,15 +217,15 @@ static void s_quote(void) {
 }
 
 void init() {
-    code_bytes = 640 * 1024;
-    prg = (uint8_t*) mmap(
+    code_bytes = 0xfb0 + 640 * 1024 + 152;
+    mem = (uint8_t*) mmap(
             NULL,
             code_bytes,
             PROT_READ | PROT_WRITE | PROT_EXEC,
             MAP_ANONYMOUS | MAP_PRIVATE,
             0,
             0);
-    sp = prg + code_bytes;
+    sp = mem + code_bytes;
     mrd2 = word_definitions;
 
     static const char *c_to_ft_image =
@@ -247,7 +248,7 @@ void init() {
     def_cfun("print-rdi-as-cstr", print_rdi_as_cstr, 0);
     def_cfun("s\"", s_quote, 1);
     begin_def("base+", 0);
-    B(0x48),B(0x8d),B(0x05),D(prg - (ep + 4)); // LEA RAX, [RIP - prg]
+    B(0x48),B(0x8d),B(0x05),D(mem - (ep + 4)); // LEA RAX, [RIP - mem]
     B(0x48),B(0x01),B(0x03);                   // ADD [RBX], RAX
     B(0xc3);
     end_def();
@@ -262,8 +263,8 @@ static void save(const char *filename) {
     uint64_t offset = 0;
     uint64_t data_offset = 0;
     uint64_t ncmds = 0;
-    uint64_t vmaddr = 0x0000000100000000;
-    uint64_t vmsize = 0x0000000000001000;
+    uint64_t vmaddr = 0x0000000001000000;
+    uint64_t vmsize = 0x0000000000100000;
 
     struct mach_header_64 *header = (struct mach_header_64*)mem;
     header->magic = MH_MAGIC_64;
@@ -289,11 +290,14 @@ static void save(const char *filename) {
     text->cmdsize = sizeof(struct segment_command_64);
     strncpy(text->segname, SEG_TEXT, 16);
     text->vmaddr = vmaddr;
-    text->vmsize = vmsize;
     text->fileoff = 0;
-    text->filesize = 4096;
+    text->vmsize = vmsize;
+    /* text->vmsize = code_bytes - 0xfb; //vmsize; */
+    text->filesize = code_bytes - 0xfb;
+    printf("code_bytes %u\n", code_bytes);
+    printf("filesize %llu\n", text->filesize);
     text->maxprot = 0x7;
-    text->initprot = 0x5;
+    text->initprot = 0x7;
     uint32_t nsects = 0;
     text->nsects = nsects;
     text->flags = 0;
@@ -303,20 +307,25 @@ static void save(const char *filename) {
 
     // section 0
     /* uint8_t prg[] = {0x48,0xc7,0xc0,0x02,0x00,0x00,0x00,0xc3}; */
-    size_t prgsize = sizeof(prg);
+    /* size_t prgsize = sizeof(prg); */
 
     struct section_64 *text_sect = (struct section_64*)(mem + offset);
     strncpy(text_sect->sectname, SECT_TEXT, 16);
     strncpy(text_sect->segname, SEG_TEXT, 16);
     text_sect->addr = 0; //vmaddr + offset
-    text_sect->size = prgsize;
+    /* text_sect->size = prgsize; */
     text_sect->offset = 0;
     text_sect->align = 0;
     text_sect->flags = 0x80000400;
 
+    size_t prgsize = code_bytes - 0xfb0 - 152;
+    printf("prgsize %zu\n", prgsize);
+    text_sect->size = prgsize;
     offset += sizeof(struct section_64);
     data_offset += text_sect->size;
     nsects += 1;
+    /* text->vmsize = prgsize; */
+    /* text->filesize = prgsize; */
 
     text->nsects = nsects;
     text->cmdsize += (sizeof(struct section_64) * nsects);
@@ -339,7 +348,7 @@ static void save(const char *filename) {
     struct dyld_info_command *dyld_info_only = (struct dyld_info_command*)(mem+offset);
     dyld_info_only->cmd = LC_DYLD_INFO_ONLY;
     dyld_info_only->cmdsize = sizeof(struct dyld_info_command);
-    dyld_info_only->export_off = 4096;
+    dyld_info_only->export_off = 0xfb0 + 640 * 1024; //4096;
     dyld_info_only->export_size = 48;
 
     offset += sizeof(struct dyld_info_command);
@@ -348,9 +357,9 @@ static void save(const char *filename) {
     struct symtab_command *symtab = (struct symtab_command*)(mem + offset);
     symtab->cmd = LC_SYMTAB;
     symtab->cmdsize = sizeof(struct symtab_command);
-    symtab->symoff = 4152; // 0x1038
+    symtab->symoff = 640 * 1024 + 0xfb0 + 56; //4152; // 0x1038
     symtab->nsyms = 3;
-    symtab->stroff = 4200; // 0x1068
+    symtab->stroff = 640 * 1024 + 0xfb0 + 56 + 48; //4200; // 0x1068
     symtab->strsize = 48;
 
     offset += sizeof(struct symtab_command);
@@ -380,7 +389,7 @@ static void save(const char *filename) {
     struct entry_point_command *entry = (struct entry_point_command*)(mem + offset);
     entry->cmd = LC_MAIN;
     entry->cmdsize = sizeof(struct entry_point_command);
-    entry->entryoff = 4016;
+    entry->entryoff = (uint64_t)(startup-mem); //4016;
     entry->stacksize = 0;
 
     offset += sizeof(struct entry_point_command);
@@ -416,10 +425,27 @@ static void save(const char *filename) {
     text_sect->addr = vmaddr + offset;
     text_sect->offset = offset;
 
-    memcpy((mem+offset), prg, sizeof(prg));
+    /* memcpy((mem+offset), prg, sizeof(prg)); */
     offset += text_sect->size;
+    printf("vmsize %u\n", code_bytes);
+    printf("section size %llu\n", text_sect->size);
+    printf("vmaddr + vmsize %llu\n", text->vmaddr + text->vmsize);
+    printf("addr   + size   %llu\n", text_sect->addr + text_sect->size);
+    assert(text->vmaddr + text->vmsize > text_sect->addr + text_sect->size);
 
-    linkedit->vmaddr = vmaddr + 0x1000; //offset;
+    /* linkedit->vmaddr = vmaddr + 0x1000; //offset; */
+    /* linkedit->vmaddr = vmaddr + 0xfb0+640*1024; //offset; */
+    linkedit->fileoff = text_sect->offset + text_sect->size;
+    linkedit->vmaddr = vmaddr + linkedit->fileoff;
+
+    static const uint8_t startup_image[] = {
+        0xbb, 0x00, 0x10, 0x4a, 0x00,
+        0xbf, 0xa8, 0x13, 0x40, 0x00,
+        0xff, 0x10,
+        0xb8, 0xa0, 0x12, 0x40, 0x00,
+        0xff, 0x10
+    };
+    memcpy(startup, startup_image, 19);
 
 
     FILE *fp = fopen(filename, "wb");
