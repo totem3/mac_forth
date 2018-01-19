@@ -13,21 +13,23 @@ static unsigned int code_bytes;
 static uint8_t *mem;
 static uint8_t *sp;
 
-#define import           (mem+0xfb0+0x240)
-#define import_limit     (mem+0xfb0+0x340)
-#define startup          (mem+0xfb0+0x340)
-#define startup_limit    (mem+0xfb0+0x360)
-#define c_to_ft          (mem+0xfb0+0x360)
-#define c_to_ft_limit    (mem+0xfb0+0x370)
-#define word_definitions (mem+0xfb0+0x440)
+#define text_start 0x1000
 
-#define ftmain (*(uint64_t *)(mem+0xfb0+0x3e8))
-#define state  (*(uint64_t *)(mem+0xfb0+0x3f0))
-#define fin    (*(FILE **)(mem+0xfb0+0x3f8))
-#define token  ((char *)(mem+0xfb0+0x400))
-#define mrd1   (*(uint8_t **)(mem+0xfb0+0x420))
-#define mrd2   (*(uint8_t **)(mem+0xfb0+0x428))
-#define ep     (*(uint8_t **)(mem+0xfb0+0x430))
+#define import           (mem+text_start+0x240)
+#define import_limit     (mem+text_start+0x340)
+#define startup          (mem+text_start+0x340)
+#define startup_limit    (mem+text_start+0x360)
+#define c_to_ft          (mem+text_start+0x360)
+#define c_to_ft_limit    (mem+text_start+0x370)
+#define word_definitions (mem+text_start+0x440)
+
+#define ftmain (*(uint64_t *)(mem+text_start+0x3e8))
+#define state  (*(uint64_t *)(mem+text_start+0x3f0))
+#define fin    (*(FILE **)(mem+text_start+0x3f8))
+#define token  ((char *)(mem+text_start+0x400))
+#define mrd1   (*(uint8_t **)(mem+text_start+0x420))
+#define mrd2   (*(uint8_t **)(mem+text_start+0x428))
+#define ep     (*(uint8_t **)(mem+text_start+0x430))
 
 /* #define import           (mem+0x200) */
 /* #define import_limit     (mem+0x300) */
@@ -217,7 +219,7 @@ static void s_quote(void) {
 }
 
 void init() {
-    code_bytes = 0xfb0 + 640 * 1024 + 152;
+    code_bytes = text_start + 640 * 1024 + 152;
     mem = (uint8_t*) mmap(
             NULL,
             code_bytes,
@@ -263,8 +265,8 @@ static void save(const char *filename) {
     uint64_t offset = 0;
     uint64_t data_offset = 0;
     uint64_t ncmds = 0;
-    uint64_t vmaddr = 0x0000000001000000;
-    uint64_t vmsize = 0x0000000000100000;
+    uint64_t vmaddr = 0x0000000100000000;
+    uint64_t vmsize = 0x00000000000a1000;
 
     struct mach_header_64 *header = (struct mach_header_64*)mem;
     header->magic = MH_MAGIC_64;
@@ -293,7 +295,7 @@ static void save(const char *filename) {
     text->fileoff = 0;
     text->vmsize = vmsize;
     /* text->vmsize = code_bytes - 0xfb; //vmsize; */
-    text->filesize = code_bytes - 0xfb;
+    text->filesize = code_bytes - text_start;
     printf("code_bytes %u\n", code_bytes);
     printf("filesize %llu\n", text->filesize);
     text->maxprot = 0x7;
@@ -318,7 +320,7 @@ static void save(const char *filename) {
     text_sect->align = 0;
     text_sect->flags = 0x80000400;
 
-    size_t prgsize = code_bytes - 0xfb0 - 152;
+    size_t prgsize = code_bytes - text_start - 152;
     printf("prgsize %zu\n", prgsize);
     text_sect->size = prgsize;
     offset += sizeof(struct section_64);
@@ -348,7 +350,7 @@ static void save(const char *filename) {
     struct dyld_info_command *dyld_info_only = (struct dyld_info_command*)(mem+offset);
     dyld_info_only->cmd = LC_DYLD_INFO_ONLY;
     dyld_info_only->cmdsize = sizeof(struct dyld_info_command);
-    dyld_info_only->export_off = 0xfb0 + 640 * 1024; //4096;
+    dyld_info_only->export_off = text_start + 640 * 1024; //4096;
     dyld_info_only->export_size = 48;
 
     offset += sizeof(struct dyld_info_command);
@@ -357,9 +359,9 @@ static void save(const char *filename) {
     struct symtab_command *symtab = (struct symtab_command*)(mem + offset);
     symtab->cmd = LC_SYMTAB;
     symtab->cmdsize = sizeof(struct symtab_command);
-    symtab->symoff = 640 * 1024 + 0xfb0 + 56; //4152; // 0x1038
+    symtab->symoff = 640 * 1024 + text_start + 56; //4152; // 0x1038
     symtab->nsyms = 3;
-    symtab->stroff = 640 * 1024 + 0xfb0 + 56 + 48; //4200; // 0x1068
+    symtab->stroff = 640 * 1024 + text_start + 56 + 48; //4200; // 0x1068
     symtab->strsize = 48;
 
     offset += sizeof(struct symtab_command);
@@ -418,8 +420,8 @@ static void save(const char *filename) {
     header->sizeofcmds = offset - sizeof(struct mach_header_64);
     /* assert(header->sizeofcmds == 728); */
 
-    if (offset < 0xfb0) {
-        offset += (0xfb0 - offset);
+    if (offset < text_start) {
+        offset += (text_start - offset);
     }
 
     text_sect->addr = vmaddr + offset;
@@ -429,22 +431,26 @@ static void save(const char *filename) {
     offset += text_sect->size;
     printf("vmsize %u\n", code_bytes);
     printf("section size %llu\n", text_sect->size);
+    printf("vmaddr %llu\n", text->vmaddr);
     printf("vmaddr + vmsize %llu\n", text->vmaddr + text->vmsize);
     printf("addr   + size   %llu\n", text_sect->addr + text_sect->size);
-    assert(text->vmaddr + text->vmsize > text_sect->addr + text_sect->size);
+    assert(text->vmaddr + text->vmsize >= text_sect->addr + text_sect->size);
 
-    /* linkedit->vmaddr = vmaddr + 0x1000; //offset; */
-    /* linkedit->vmaddr = vmaddr + 0xfb0+640*1024; //offset; */
+    /* linkedit->vmaddr = vmaddr + text_start; //offset; */
+    /* linkedit->vmaddr = vmaddr + text_start+640*1024; //offset; */
     linkedit->fileoff = text_sect->offset + text_sect->size;
     linkedit->vmaddr = vmaddr + linkedit->fileoff;
 
     static const uint8_t startup_image[] = {
         0xbb, 0x00, 0x10, 0x4a, 0x00,
         0xbf, 0xa8, 0x13, 0x40, 0x00,
-        0xff, 0x10,
-        0xb8, 0xa0, 0x12, 0x40, 0x00,
-        0xff, 0x10
+        0xff, 0x17,
+        0xbf, 0xa0, 0x12, 0x40, 0x00,
+        0xff, 0x17
     };
+
+
+
     memcpy(startup, startup_image, 19);
 
 
