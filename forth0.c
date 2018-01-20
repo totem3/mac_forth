@@ -13,6 +13,8 @@ static unsigned int code_bytes;
 static uint8_t *mem;
 static uint8_t *sp;
 
+static uint64_t vmaddr = 0x0000000000100000;
+
 #define text_start 0x1000
 
 #define import           (mem+text_start+0x240)
@@ -250,7 +252,7 @@ void init() {
     def_cfun("print-rdi-as-cstr", print_rdi_as_cstr, 0);
     def_cfun("s\"", s_quote, 1);
     begin_def("base+", 0);
-    B(0x48),B(0x8d),B(0x05),D(mem - (ep + 4)); // LEA RAX, [RIP - mem]
+    B(0x48),B(0x8d),B(0x05),D(mem - (ep + 4) + vmaddr); // LEA RAX, [RIP - mem]
     B(0x48),B(0x01),B(0x03);                   // ADD [RBX], RAX
     B(0xc3);
     end_def();
@@ -265,7 +267,7 @@ static void save(const char *filename) {
     uint64_t offset = 0;
     uint64_t data_offset = 0;
     uint64_t ncmds = 0;
-    uint64_t vmaddr = 0x0000000100000000;
+    /* uint64_t vmaddr = 0x0000000000100000; */
     uint64_t vmsize = 0x00000000000a1000;
 
     struct mach_header_64 *header = (struct mach_header_64*)mem;
@@ -436,23 +438,26 @@ static void save(const char *filename) {
     printf("addr   + size   %llu\n", text_sect->addr + text_sect->size);
     assert(text->vmaddr + text->vmsize >= text_sect->addr + text_sect->size);
 
-    /* linkedit->vmaddr = vmaddr + text_start; //offset; */
-    /* linkedit->vmaddr = vmaddr + text_start+640*1024; //offset; */
     linkedit->fileoff = text_sect->offset + text_sect->size;
     linkedit->vmaddr = vmaddr + linkedit->fileoff;
 
-    static const uint8_t startup_image[] = {
-        0xbb, 0x00, 0x10, 0x4a, 0x00,
-        0xbf, 0xa8, 0x13, 0x40, 0x00,
-        0xff, 0x17,
-        0xbf, 0xa0, 0x12, 0x40, 0x00,
-        0xff, 0x17
-    };
+static const uint8_t startup_image[] = { 0x48, 0xBB, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0xBF, 0xE8, 0x13, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x17, 0xBF, 0xA0, 0x12, 0x40, 0x00, 0xFF, 0x17 };
 
 
 
     memcpy(startup, startup_image, 19);
 
+
+    uint8_t *main_ = find_word("main");
+    if (!main_) {
+        printf("error: cannot find 'main'\n");
+        exit(EXIT_FAILURE);
+    }
+
+    ftmain = (uint8_t*)(*WORD_BODY(main_)) - mem + vmaddr;
+
+    mrd1 = (uint8_t *)(mrd2 - mem + vmaddr);
+    mrd2 = (uint8_t *)(vmaddr+text_start+0x440);
 
     FILE *fp = fopen(filename, "wb");
     fwrite(mem, 1, code_bytes, fp);
