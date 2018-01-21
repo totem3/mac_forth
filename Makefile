@@ -1,4 +1,4 @@
-.PHONY: build
+.PHONY: build test
 build:
 	gcc -o forth0 forth0.c ; echo ": main ;" | ./forth0 foo
 test:
