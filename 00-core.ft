@@ -102,13 +102,13 @@
   X 0x48 X 0x83 X 0xc3 X 0x10 ( ADD RBX, 16      )
 ;
 
-: ftmain 0x3a8 base+ ;
-: state  0x3b0 base+ ;
-: fin    0x3b8 base+ ;
-: token  0x3c0 base+ ;
-: mrd1   0x3e0 base+ ;
-: mrd2   0x3e8 base+ ;
-: ep     0x3f0 base+ ;
+: ftmain 0x3e8 base+ ;
+: state  0x3f0 base+ ;
+: fin    0x3f8 base+ ;
+: token  0x400 base+ ;
+: mrd1   0x420 base+ ;
+: mrd2   0x428 base+ ;
+: ep     0x430 base+ ;
 
 : word-size ( word -- size )
   8 - @
