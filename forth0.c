@@ -441,11 +441,14 @@ static void save(const char *filename) {
     linkedit->fileoff = text_sect->offset + text_sect->size;
     linkedit->vmaddr = vmaddr + linkedit->fileoff;
 
-static const uint8_t startup_image[] = { 0x48, 0xBB, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0xBF, 0xE8, 0x13, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x17, 0xBF, 0xA0, 0x12, 0x40, 0x00, 0xFF, 0x17 };
-
-
-
-    memcpy(startup, startup_image, 19);
+    static const char *startup_image =
+        "48 BB 00 00 1a 00 00 00 00 00 "
+        "48 BF E8 13 10 00 00 00 00 00 "
+        "FF 17 "
+        "BF A0 12 40 00 "
+        "FF 17 "
+        ;
+    write_hex(startup, startup_limit, (char*)startup_image);
 
 
     uint8_t *main_ = find_word("main");
@@ -454,7 +457,7 @@ static const uint8_t startup_image[] = { 0x48, 0xBB, 0x00, 0x00, 0x10, 0x00, 0x0
         exit(EXIT_FAILURE);
     }
 
-    ftmain = (uint8_t*)(*WORD_BODY(main_)) - mem + vmaddr;
+    ftmain = (uint8_t*)(WORD_BODY(main_)) - mem + vmaddr;
 
     mrd1 = (uint8_t *)(mrd2 - mem + vmaddr);
     mrd2 = (uint8_t *)(vmaddr+text_start+0x440);
