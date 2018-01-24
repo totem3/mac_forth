@@ -352,7 +352,13 @@ static void save(const char *filename) {
     struct dyld_info_command *dyld_info_only = (struct dyld_info_command*)(mem+offset);
     dyld_info_only->cmd = LC_DYLD_INFO_ONLY;
     dyld_info_only->cmdsize = sizeof(struct dyld_info_command);
-    dyld_info_only->export_off = text_start + 640 * 1024; //4096;
+    uint32_t s = text_start + 640 * 1024;
+    dyld_info_only->lazy_bind_off = s;
+    dyld_info_only->lazy_bind_size = 32;
+    uint8_t lazy_bind[] = {0x72, 0x10, 0x11, 0x40, 0x5f, 0x65, 0x78, 0x69, 0x74, 0x00, 0x90, 0x00, 0x72, 0x18, 0x11, 0x40, 0x5f, 0x70, 0x72, 0x69, 0x6e, 0x74, 0x66, 0x00, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    memcpy(mem + s, &lazy_bind, 32);
+    s += 32;
+    dyld_info_only->export_off = s; //4096;
     dyld_info_only->export_size = 48;
 
     offset += sizeof(struct dyld_info_command);
