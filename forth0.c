@@ -221,7 +221,7 @@ static void s_quote(void) {
 }
 
 void init() {
-    code_bytes = text_start + 640 * 1024 + 152;
+    code_bytes = text_start + 640 * 1024 + 152 + 32;
     mem = (uint8_t*) mmap(
             NULL,
             code_bytes,
@@ -322,7 +322,7 @@ static void save(const char *filename) {
     text_sect->align = 0;
     text_sect->flags = 0x80000400;
 
-    size_t prgsize = code_bytes - text_start - 152;
+    size_t prgsize = code_bytes - text_start - 152 - 32;
     printf("prgsize %zu\n", prgsize);
     text_sect->size = prgsize;
     offset += sizeof(struct section_64);
@@ -367,9 +367,10 @@ static void save(const char *filename) {
     struct symtab_command *symtab = (struct symtab_command*)(mem + offset);
     symtab->cmd = LC_SYMTAB;
     symtab->cmdsize = sizeof(struct symtab_command);
-    symtab->symoff = 640 * 1024 + text_start + 56; //4152; // 0x1038
+    symtab->symoff = s;// 640 * 1024 + text_start + 56; //4152; // 0x1038
     symtab->nsyms = 3;
-    symtab->stroff = 640 * 1024 + text_start + 56 + 48; //4200; // 0x1068
+    s += 48;
+    symtab->stroff = s; //4200; // 0x1068
     symtab->strsize = 48;
 
     offset += sizeof(struct symtab_command);
