@@ -16,6 +16,7 @@ static uint8_t *sp;
 static uint64_t vmaddr = 0x0000000000100000;
 
 #define text_start 0x1000
+#define data_start text_start+640*1024+152+32;
 
 #define import           (mem+text_start+0x240)
 #define import_limit     (mem+text_start+0x340)
