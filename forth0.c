@@ -335,6 +335,19 @@ static void save(const char *filename) {
     text->nsects = nsects;
     text->cmdsize += (sizeof(struct section_64) * nsects);
 
+    struct segment_command_64 *seg_data = (struct segment_command_64*)(mem+offset);
+    seg_data->cmd = LC_SEGMENT_64;
+    seg_data->cmdsize = sizeof(struct segment_command_64);
+    strncpy(seg_data->segname, SEG_DATA, 16);
+    seg_data->vmaddr = 0; // vmdadr + offset
+    seg_data->vmsize = 4096;
+    seg_data->fileoff = 4096;
+    seg_data->filesize = 152;
+    seg_data->maxprot = 7;
+    seg_data->initprot = 1;
+    offset += sizeof(struct segment_command_64);
+    ncmds += 1;
+
     struct segment_command_64 *linkedit = (struct segment_command_64*)(mem+offset);
     linkedit->cmd = LC_SEGMENT_64;
     linkedit->cmdsize = sizeof(struct segment_command_64);
