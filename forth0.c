@@ -343,7 +343,7 @@ static void save(const char *filename) {
     seg_data->vmsize = 4096;
     seg_data->fileoff = 4096;
     seg_data->filesize = 152;
-    seg_data->maxprot = 7;
+    seg_data->maxprot = 5;
     seg_data->initprot = 1;
     offset += sizeof(struct segment_command_64);
     ncmds += 1;
